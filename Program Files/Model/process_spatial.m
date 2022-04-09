@@ -46,13 +46,13 @@ if ~exist(nodatafile,'file')
             tmpshpdir = tempname;
             mkdir(tmpshpdir);
             evalc(['!ogr2ogr -t_srs "' Info.Proj4String '" -dim 2 -clipdst ' xmin ' ' ymin ' ' xmax ' ' ymax ' "' fullfile(tmpshpdir,'tmp.shp') '" "' Info.ExtentFile '"']);
-            S = shapeinfo_sp([Info.ProgramFilesDir '/python'],fullfile(tmpshpdir,'tmp.shp'));
+            S = shapeinfo_sp([Info.ProgramFilesDir '/Python'],fullfile(tmpshpdir,'tmp.shp'));
             z = double(imread(ofname));
             if (S.BoundingBox(1)) < 1E30
                 evalc(['!gdal_rasterize -ot Byte -init 0 -burn 1 -tr ' tr ' ' tr ' -te ' xmin ' ' ymin ' ' xmax ' ' ymax ' "' fullfile(tmpshpdir,'tmp.shp') '" "' ofname2 '"']);
             else
                 imwrite2tif(zeros(size(z)),[],ofname2,'single');
-                evalc(['!python "' Info.ProgramFilesDir '/python/gdalcopyproj.py" "' ofname '" "' ofname2 '"']);
+                evalc(['!python "' Info.ProgramFilesDir '/Python/gdalcopyproj.py" "' ofname '" "' ofname2 '"']);
             end
             rmdir(tmpshpdir,'s')
         end
@@ -61,8 +61,8 @@ if ~exist(nodatafile,'file')
     z_0 = double(imread(ofname));
     % Instead of geotiffinfo, use a simple function which provides the
     % relavent info without the mapping toolbox
-%     geo = geotiffinfo(ofname);
-    geo = geotiffinfo_sp([Info.ProgramFilesDir '/python'],ofname);
+    geo = geotiffinfo(ofname);
+    %geo = geotiffinfo_sp([Info.ProgramFilesDir '/Python'],ofname);
     
     SpatialData.z = z_0;
     if exist(ofname2,'file');
@@ -127,20 +127,29 @@ if ~exist(nodatafile,'file')
         nanlocs = nanlocs | SpatialData.R <= NoDataVal;
 
         % Get matrices of longitude and latitude coordinates (for forcing interpolation)
+        % BW EDIT HERE: Use MATLAB 2022 specific method to convert lat/lon
+        % I was having issues with the python function switching the two..
         ifname = ofname;
-        ofname1 = [Info.SpatialDataDir filesep Info.NameIdentifier filesep 'lat.tif'];
-        ofname2 = [Info.SpatialDataDir filesep Info.NameIdentifier filesep 'lon.tif'];
-        if exist(ofname1,'file')
-            delete(ofname1);
-        end
-        if exist(ofname2,'file');
-            delete(ofname2)
-        end
-        evalc(['!python "' Info.ProgramFilesDir filesep 'Python' filesep 'pixels2latlonmat.py" "' ifname '" "' ofname1 '" "' ofname2 '"']);
-        SpatialData.LatMap = double(imread(ofname1));
-        SpatialData.LonMap = double(imread(ofname2));
-        delete(ofname1);
-        delete(ofname2);
+        inform = geotiffinfo(ifname);
+        heights = inform.Height; % Integer indicating the height of the image in pixels
+        widths = inform.Width; % Integer indicating the width of the image in pixels
+        [colsss,rowsss] = meshgrid(1:widths,1:heights);
+        [x,y] = pix2map(inform.RefMatrix, rowsss, colsss);
+        [latt,lonn] = projinv(inform, x,y);
+
+        %ofname1 = [Info.SpatialDataDir filesep Info.NameIdentifier filesep 'lat.tif'];
+        %ofname2 = [Info.SpatialDataDir filesep Info.NameIdentifier filesep 'lon.tif'];
+        %if exist(ofname1,'file')
+        %    delete(ofname1);
+        %end
+        %if exist(ofname2,'file');
+        %    delete(ofname2)
+        %end
+        %evalc(['!python "' Info.ProgramFilesDir filesep 'Python' filesep 'pixels2latlonmat.py" "' ifname '" "' ofname1 '" "' ofname2 '"']);
+        SpatialData.LatMap = double(latt);
+        SpatialData.LonMap = double(lonn);
+        %delete(ofname1);
+        %delete(ofname2);
 
         % Get the vegetation height map
         ofname = [Info.SpatialDataDir filesep Info.NameIdentifier filesep 'Veght.tif'];
